@@ -1,0 +1,7 @@
+﻿Due to the limitations of the supported zip file format, the following file(s) had to be renamed.
+
+Original File Name  ->  New File Name
+saint1/data/♪超録 - パソコン長時間録音機.lnk -> saint1/data/File1.lnk
+yonrin2 - コピー/myrobot0.cpp -> 1/myrobot0.cpp
+yonrin2 - コピー/myrobot0.h -> 1/myrobot0.h
+yonrin2 - コピー/yonrin2.ino -> 1/yonrin2.ino
