@@ -6,8 +6,17 @@
 
 #include "idktlib.h"
 
-const double PI = 3.14159265;
-const double root = 1.41421356;
+#define PI 3.14159265
+#define root_2 1.41421356
+const int FRT = 0;
+const int LFT = 1;
+const int BCK = 2;
+const int RGT = 3;
+const int MID = 1;
+const int DFD = 2; 
+const int MV = 3;
+const int SHOOT = 0;
+const int CHARGE = 1;
 #define DEG2RAD(deg)  ((float) (deg * PI/180.0))
 #define RAD2DEG(rad)  ((float) (rad * 180.0/PI))
 int g_debugBall[8] = {
@@ -25,7 +34,11 @@ int g_diff;
 int g_loop;
 int g_kick = 0;
 int g_max;
+int g_b_dir;
 float g_integral;
+double vec_x;
+double vec_y;
+volatile long unsigned int g_time = 0;
 //
 // ボールセンサのチェック
 void checkBallSensor()
@@ -608,8 +621,8 @@ void PID()
   g_diff = target - getCompass();
   if(g_diff >= 180) g_diff -= 360;
   else if(g_diff < - 180) g_diff += 360;
-  float pro = g_diff / 5.4;
-  g_pid = pro + 7;
+  float pro = g_diff* 0.2;
+  g_pid = pro ;
 }
 boolean getBotton(){
   if(digitalRead(BOTTON_PIN) == HIGH)  return  true;
@@ -786,9 +799,15 @@ int getxpos(){
 }
 void movevec105(int vx , int vy , int spin ,int kick){ 
  float m_r, m_b,m_l;//clockwise
- m_r =   vx * sin(DEG2RAD(15))  - vy * cos(DEG2RAD(15))  - 9.6 * DEG2RAD(spin) * 21;
+ m_r =   (vx * sin(DEG2RAD(15))  - vy * cos(DEG2RAD(15))) * 1.2  - 9.6 * DEG2RAD(spin) * 21;
  m_b =  -vx * sin(DEG2RAD(270)) + vy * cos(DEG2RAD(270)) +  9.6 * DEG2RAD(spin) * 21;
- m_l =  -vx * sin(DEG2RAD(165)) + vy * cos(DEG2RAD(165)) + 9.6 * DEG2RAD(spin) * 21 ;
+ m_l =  (-vx * sin(DEG2RAD(165)) + vy * cos(DEG2RAD(165)))* 1.2 + 9.6 * DEG2RAD(spin) * 21;
+ if(m_r > MAX_POWER) m_r = MAX_POWER;
+ else if(m_r < -MAX_POWER) m_r = -MAX_POWER;
+ if(m_b > MAX_POWER) m_b = MAX_POWER;
+ else if(m_b < -MAX_POWER) m_b = - MAX_POWER;
+ if(m_l > MAX_POWER) m_l = MAX_POWER;
+ else if(m_l < -MAX_POWER) m_l = - MAX_POWER;
  motor4ch(m_r, m_b, m_l, kick);
 }
 
@@ -914,25 +933,130 @@ void pid_control(){
   double max_vel  = 6.28;
 }
 
-double fuzzyball(int ball, int bmax, int bmin){
+double fuzzyball(double ball, double bmax, double bmin){
   if     (ball < bmin) return 0;
   else if(ball > bmax) return 1;
-                       return (ball - bmin)/(bmax-bmin);
+  return (ball - bmin)/(bmax-bmin);
 }
 
-typedef Vector{
-  float x;
-  float y; 
-};
-
-double getvec(int g_ball[]){
-  int fuzz_ball[8];
-  for(int i = 0; i < 8 ; i++)
-    fuzz_ball[i] = fuzzyball(g_ball[i],100,1000);
-  Vector vector; 
-  vector.x = ;
+void setvec(double p_limit){
+  double fuzz_ball[8];
+  for(int i = 0; i < 8 ; i++){
+    fuzz_ball[i] = fuzzyball(g_ball[i],1023,100);
+  }
+  const double divc = 1 + root_2;
+  vec_x =  fuzz_ball[7] + fuzz_ball[5] - fuzz_ball[1] - fuzz_ball[3];
+  vec_x *= root_2;
+  vec_x *= 0.5;
+  vec_x += fuzz_ball[6] - fuzz_ball[2];
+  vec_x *= p_limit / divc;
+  vec_y = fuzz_ball[1] + fuzz_ball[7] - fuzz_ball[3] - fuzz_ball[5];
+  vec_y *= root_2;
+  vec_y *= 0.5;
+  vec_y += fuzz_ball[0] /*- fuzz_ball[4]*/;
+  vec_y *= p_limit / divc;
+  /*slcd.setCursor(0,1);
+  slcd.print(vec_x, DEC);
+  slcd.print("");*/
 }
 
+void getData(){
+  g_b_dir = getMaxball();
+  PID();
+  setPing(0);
+}
 
+void saint10(int tac){
+ while(true){
+  MsTimer2::stop();
+   switch(g_time){
+     /*if(g_dist[0] < 30){
+       
+       {
+       setPing(1);
+       setPing(3);
+       }
+       if(g_dist[1] > g_dist[3] && g_dist[3] <  40 ){
+         g_pid = -50;
+         wrp(60);
+         getData();
+       }
+       else{
+         g_pid = 50;
+         wrp(80);
+         getData();
+       }
+       break;
+     }*/
+     case 0:
+       wrp1(80,0,100);
+       getData();
+       g_time++;
+       break;
+     case 1:
+       wrp1(80,1,100);
+       getData();
+       g_time++;
+       break;
+     default:
+       wrp(60);
+       getData();
+       g_time++;
+       if(g_time > 100) g_time = 0;
+       break;
+   }
+ }
+ //else wrp1(60,1,70);
+  MsTimer2::start();
+  //wrp(60);
+}
 
+void setPing(int i){
+  g_dist[i] = getPing(i); 
+}
+
+void wrp(int power){
+  setvec((double)power);
+  if(vec_y <= -20){
+    vec_x = power - vec_x;
+    vec_y = power - vec_y;
+  }
+  else if( 20 > vec_y && vec_y > -20){
+    vec_y = -abs(vec_y) - power *  0.2;
+  }
+  else if(vec_y >= 20){}
+  else{}
+  movevec105(vec_x,vec_y, -g_pid, 0 );
+}
+
+void wrp1(int power, int k_mode , int k_power){
+  setvec((double)power);
+  if(vec_y <= -20){
+    vec_x = power - vec_x;
+    vec_y = power - vec_y;
+  }
+  else if( 20 > vec_y && vec_y > -20){
+    vec_y = -abs(vec_y) - power *  0.2;
+  }
+  else if(vec_y >= 20){}
+  else{}
+  if(k_mode == 1) movevec105(vec_x,vec_y, -g_pid, -k_power );
+  else movevec105(vec_x,vec_y, -g_pid, k_power );
+}
+unsigned long getTime(){
+  if(g_time > 100) g_time %= 100; 
+  return g_time;
+}
+
+void thread(){
+  int tac = 0;
+  saint10(0);
+  delay(30);
+}
+void setTime(){
+  MsTimer2::stop();
+  g_time++;
+  delay(1);
+  MsTimer2::start();
+}
 

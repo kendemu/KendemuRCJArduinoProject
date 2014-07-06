@@ -6,8 +6,17 @@
 
 #include "idktlib.h"
 
-const double PI = 3.14159265;
-const double root = 1.41421356;
+#define PI 3.14159265
+#define root_2 1.41421356
+const int FRT = 0;
+const int LFT = 1;
+const int BCK = 2;
+const int RGT = 3;
+const int MID = 1;
+const int DFD = 2; 
+const int MV = 3;
+const int SHOOT = 0;
+const int CHARGE = 1;
 #define DEG2RAD(deg)  ((float) (deg * PI/180.0))
 #define RAD2DEG(rad)  ((float) (rad * 180.0/PI))
 int g_debugBall[8] = {
@@ -26,6 +35,9 @@ int g_loop;
 int g_kick = 0;
 int g_max;
 float g_integral;
+double vec_x;
+double vec_y;
+long long int g_time = 0;
 //
 // ボールセンサのチェック
 void checkBallSensor()
@@ -608,8 +620,8 @@ void PID()
   g_diff = target - getCompass();
   if(g_diff >= 180) g_diff -= 360;
   else if(g_diff < - 180) g_diff += 360;
-  float pro = g_diff / 5.4;
-  g_pid = pro + 7;
+  float pro = g_diff* 0.3;
+  g_pid = pro ;
 }
 boolean getBotton(){
   if(digitalRead(BOTTON_PIN) == HIGH)  return  true;
@@ -786,9 +798,9 @@ int getxpos(){
 }
 void movevec105(int vx , int vy , int spin ,int kick){ 
  float m_r, m_b,m_l;//clockwise
- m_r =   vx * sin(DEG2RAD(15))  - vy * cos(DEG2RAD(15))  - 9.6 * DEG2RAD(spin) * 21;
+ m_r =   (vx * sin(DEG2RAD(15))  - vy * cos(DEG2RAD(15))) * 1.5  - 9.6 * DEG2RAD(spin) * 21;
  m_b =  -vx * sin(DEG2RAD(270)) + vy * cos(DEG2RAD(270)) +  9.6 * DEG2RAD(spin) * 21;
- m_l =  -vx * sin(DEG2RAD(165)) + vy * cos(DEG2RAD(165)) + 9.6 * DEG2RAD(spin) * 21 ;
+ m_l =  (-vx * sin(DEG2RAD(165)) + vy * cos(DEG2RAD(165)))* 1.5 + 9.6 * DEG2RAD(spin) * 21;
  motor4ch(m_r, m_b, m_l, kick);
 }
 
@@ -914,25 +926,92 @@ void pid_control(){
   double max_vel  = 6.28;
 }
 
-double fuzzyball(int ball, int bmax, int bmin){
+double fuzzyball(double ball, double bmax, double bmin){
   if     (ball < bmin) return 0;
   else if(ball > bmax) return 1;
-                       return (ball - bmin)/(bmax-bmin);
+  return (ball - bmin)/(bmax-bmin);
 }
 
-typedef Vector{
-  float x;
-  float y; 
-};
-
-double getvec(int g_ball[]){
-  int fuzz_ball[8];
-  for(int i = 0; i < 8 ; i++)
-    fuzz_ball[i] = fuzzyball(g_ball[i],100,1000);
-  Vector vector; 
-  vector.x = ;
+void setvec(double p_limit){
+  double fuzz_ball[8];
+  for(int i = 0; i < 8 ; i++){
+    fuzz_ball[i] = fuzzyball(g_ball[i],1023,100);
+  }
+  const double divc = 1 + root_2;
+  vec_x =  fuzz_ball[7] + fuzz_ball[5] - fuzz_ball[1] - fuzz_ball[3];
+  vec_x *= root_2;
+  vec_x *= 0.5;
+  vec_x += fuzz_ball[6] - fuzz_ball[2];
+  vec_x *= p_limit / divc;
+  vec_y = fuzz_ball[1] + fuzz_ball[7] - fuzz_ball[3] - fuzz_ball[5];
+  vec_y *= root_2;
+  vec_y *= 0.5;
+  vec_y += fuzz_ball[0] /*- fuzz_ball[4]*/;
+  vec_y *= p_limit / divc;
+  /*slcd.setCursor(0,1);
+  slcd.print(vec_x, DEC);
+  slcd.print("");*/
 }
 
+void getData(){
+   PID();
+  int b_dir = getMaxball();
+}
 
+void saint10(int tac){
+  getData();
+  switch(tac){
+   case 0:
+     break;
+   case MID:
+     if(g_time % 100 == 0){ 
+       while(g_time % 100 < 30)  wrp(80, SHOOT, 90);
+       while(g_time % 100 < 90)  wrp(80, CHARGE, 90);
+     }
+     else  wrp(80);
+     break;
+   case DFD:
+     break;
+   case MV:
+     break;
+   default:
+     break;
+ }
+}
 
+void setPing(int i){
+  g_dist[i] = getPing(i); 
+}
 
+void wrp(int power){
+  setvec((double)power);
+  if(vec_y <= -20){
+    vec_x = power - vec_x;
+    vec_y = power - vec_y;
+  }
+  else if( 20 > vec_y && vec_y > -20){
+    vec_y = -abs(vec_y) - power *  0.2;
+  }
+  else if(vec_y >= 20){}
+  else{}
+  movevec105(vec_x,vec_y, -g_pid, 0 );
+}
+
+void wrp(int power, int k_mode , int k_power){
+  setvec((double)power);
+  if(vec_y <= -20){
+    vec_x = power - vec_x;
+    vec_y = power - vec_y;
+  }
+  else if( 20 > vec_y && vec_y > -20){
+    vec_y = -abs(vec_y) - power *  0.2;
+  }
+  else if(vec_y >= 20){}
+  else{}
+  if(k_mode == SHOOT) k_power *= -1;
+  else movevec105(vec_x,vec_y, -g_pid, k_power );
+}
+
+void setTime(){
+  g_time+= 50;
+}
